@@ -454,6 +454,28 @@ describe("fetchSelfReviewContext (#5145)", () => {
     expect(result.pullRequests[0]?.linkedIssues).toEqual([7]);
   });
 
+  it("extractLinkedIssueNumbers recognizes the full issue-URL closing form, at parity with the gate", async () => {
+    // A contributor pasting the full issue URL (a common habit) must still link the issue, exactly as the
+    // live gate's src/db/repositories.ts extractLinkedIssueNumbers does; a same-repo URL counts, a cross-repo
+    // URL does not.
+    const fetchImpl = routedFetch({
+      "/repos/acme/widgets/issues": () => jsonResponse([]),
+      "/repos/acme/widgets/pulls": () =>
+        jsonResponse([
+          prPayload({
+            number: 60,
+            body: "Fixes https://github.com/acme/widgets/issues/7. Not https://github.com/other-org/other-repo/issues/9 (different repo).",
+          }),
+        ]),
+      "/repos/acme/widgets": () => jsonResponse(REPO_PAYLOAD),
+      "raw.githubusercontent.com": () => jsonResponse(null, 404),
+      "api.gittensor.io/miners": () => jsonResponse([]),
+    });
+
+    const result = await fetchSelfReviewContext("acme/widgets", { fetchImpl: fetchImpl as never });
+    expect(result.pullRequests[0]?.linkedIssues).toEqual([7]);
+  });
+
   it("maps a dirty and an unknown mergeable state correctly", async () => {
     const fetchImpl = routedFetch({
       "/repos/acme/widgets/issues": () => jsonResponse([]),

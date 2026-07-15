@@ -122,18 +122,22 @@ function extractLinkedPrNumbers(body) {
   return numbers;
 }
 
-// Mirrors src/db/repositories.ts's extractLinkedIssueNumbers: GitHub's own closing-keyword vocabulary, only
-// counting a fully-qualified owner/repo#N reference when it targets the SAME repo being fetched.
-const LINKED_ISSUE_PATTERN = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:([\w.-]+\/[\w.-]+)#|#)(\d+)\b/gi;
+// Mirrors src/db/repositories.ts's extractLinkedIssueNumbers: GitHub's own closing-keyword vocabulary,
+// recognizing the bare `#N`, fully-qualified `owner/repo#N`, and full-URL
+// `https://github.com/owner/repo/issues/N` forms (the URL form is one GitHub's own linker resolves, so a
+// contributor pasting an issue URL still links it), only counting a qualified/URL reference when it targets
+// the SAME repo being fetched.
+const LINKED_ISSUE_PATTERN =
+  /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+(?:https?:\/\/(?:www\.)?github\.com\/(?<urlOwner>[\w.-]+\/[\w.-]+)\/issues\/(?<urlNum>\d+)|(?<qualOwner>[\w.-]+\/[\w.-]+)#(?<qualNum>\d+)|#(?<bareNum>\d+))\b/gi;
 function extractLinkedIssueNumbers(body, repoFullName) {
   // Strip backtick code spans first so a closing-keyword pattern quoted as example code doesn't count.
   const withoutCodeSpans = body.replace(/`[^`]*`/g, "");
   const numbers = [];
   const normalizedRepo = repoFullName.toLowerCase();
   for (const match of withoutCodeSpans.matchAll(LINKED_ISSUE_PATTERN)) {
-    const qualifiedRepo = match[1];
+    const qualifiedRepo = match.groups.urlOwner ?? match.groups.qualOwner;
     if (qualifiedRepo !== undefined && qualifiedRepo.toLowerCase() !== normalizedRepo) continue;
-    const number = Number(match[2]);
+    const number = Number(match.groups.urlNum ?? match.groups.qualNum ?? match.groups.bareNum);
     if (Number.isInteger(number) && number > 0) numbers.push(number);
   }
   return numbers;
